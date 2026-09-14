@@ -114,6 +114,74 @@ flags the conflicting ones — those are worth looking at directly.
 `google/code_x_glue_cc_defect_detection` — test and validation splits (2.1 MB each)
 from the local Hugging Face cache. Test labels: 1,477 not-vulnerable / 1,255 vulnerable.
 
+---
+
+## How it works
+
+```mermaid
+flowchart TD
+    A["Devign / CodeXGLUE<br/>C functions + labels"] --> B["src/leakage.py"]
+    B --> C1["normalise_exact<br/>whitespace only"]
+    B --> C2["normalise_structural<br/>strip comments and literals,<br/>rename identifiers"]
+    C1 --> D["sha256 digest"]
+    C2 --> D
+    D --> E["index the reference split"]
+    E --> F["look up every test row"]
+    F --> G{"match found?"}
+    G -->|"same label"| H["LEAKAGE<br/>memorisable"]
+    G -->|"opposite label"| I["LABEL NOISE<br/>unwinnable"]
+    G -->|"no match"| J["clean"]
+    F --> K["internal_duplicates()<br/>within one split"]
+    style H fill:#f59e0b,color:#fff
+    style I fill:#dc2626,color:#fff
+    style J fill:#16a34a,color:#fff
+```
+
+Control flow and C keywords survive structural normalisation, so `if` and `while` never
+collapse into each other - only naming and constants are erased.
+
+---
+
+## Problems hit while building this
+
+| Problem | What happened | Fix |
+|---|---|---|
+| **The train split would not download** | 17.85 MB, two attempts, both leaving **0-byte** files while the connection was saturated by another transfer | Shipped the validation-to-test result and marked train-to-test **explicitly not measured**, rather than estimating it |
+| **A silent "successful" download** | `hf_hub_download` exited 0 but no file appeared, so the analysis failed with a confusing missing-file error | Verified against the cache directory rather than trusting the exit code; the error now names the exact fetch command |
+| **The UI refused to start** | It loaded `train` at import, so anyone without that split got a crash instead of a dashboard | Train is optional; the app degrades to validation-only and explains how to fetch it |
+| **My prior was wrong** | I expected to confirm that CodeXGLUE is duplicate-heavy. The measurement says otherwise at these thresholds | Reported the negative result, and stated that the claim **could not be verified**, so it is not cited |
+
+---
+
+## Future work
+
+1. **Measure train to test.** The comparison that matters. The code path exists and is
+   tested; it needs the 17.85 MB split.
+2. **Near-duplicate detection beyond exact-match-on-a-normal-form.** MinHash/LSH or token
+   edit distance would catch functions differing by a single statement, invisible now.
+3. **Use `project` and `commit_id`** to corroborate matches, and to check whether
+   duplicates cluster in particular upstream projects.
+4. **Quantify the ceiling.** Conflicting labels cap achievable accuracy below 100% -
+   compute that bound explicitly and compare it against published Devign scores.
+5. **Re-score a published model** on a de-duplicated, conflict-free test split to find out
+   whether reported numbers move at all.
+6. **Apply the same analysis to other CodeXGLUE tasks** - clone detection especially,
+   where duplication is structural to the task.
+
+---
+
+## Stack
+
+`Python 3.11+` · `pandas` · `pyarrow` · `Streamlit` · `Altair` · `pytest` · `ruff` ·
+`GitHub Actions` · dataset via `Hugging Face Hub`
+
+## Keywords
+
+Devign · CodeXGLUE · vulnerability detection · data leakage · train test contamination ·
+benchmark contamination · duplicate detection · label noise · dataset quality ·
+code clone detection · software vulnerability dataset · C code analysis ·
+machine learning for code · benchmark validity · reproducibility
+
 ## Layout
 
 ```
