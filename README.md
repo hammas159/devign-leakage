@@ -1,61 +1,104 @@
-# devign-leakage
+<h1 align="center">devign-leakage</h1>
+<p align="center"><i>Is the test set already in the training set?</i></p>
 
-**Devign's cross-split leakage is smaller than commonly assumed — but every exact
-duplicate inside its test set is labelled inconsistently.**
+<p align="center">
+  <a href="docs/RESULTS.md">Results</a> &middot;
+  <a href="docs/METHOD.md">Method</a> &middot;
+  <a href="docs/PROBLEMS.md">Problems hit</a> &middot;
+  <a href="docs/LIMITATIONS.md">Limitations</a> &middot;
+  <a href="docs/FUTURE.md">Future work</a> &middot;
+  <a href="#run-it">Run it</a>
+</p>
 
-Devign (via CodeXGLUE) is a standard vulnerability-detection benchmark: C functions
-labelled vulnerable or not. A test score only measures generalisation if the splits do
-not overlap, and only means anything if the labels are self-consistent.
+<p align="center">
+  <a href="https://github.com/hammas159/devign-leakage/actions/workflows/ci.yml"><img src="https://github.com/hammas159/devign-leakage/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/hammas159/devign-leakage" alt="license"></a>
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="python">
+  <img src="https://img.shields.io/badge/tests-19%20passing-brightgreen" alt="tests">
+  <img src="https://img.shields.io/badge/data-Devign%20%2F%20CodeXGLUE-orange" alt="data">
+  <img src="https://img.shields.io/badge/result-negative%20%28reported%20anyway%29-informational" alt="negative result">
+  <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/badge/lint-ruff-261230" alt="ruff"></a>
+</p>
+
+---
+
+> ### Devign's cross-split leakage is smaller than assumed - but every exact duplicate inside its test set carries conflicting labels.
+
+Devign is a standard vulnerability-detection benchmark: C functions labelled vulnerable or
+not. A test score only measures generalisation if the splits do not overlap, and only means
+anything if the labels are self-consistent.
 
 This measures both, and keeps them apart, because they have different consequences:
 
-- **leakage** — the same function, same label, on both sides. A model can score by
-  memorising.
-- **label noise** — the same function with *opposite* labels. No model can be right on
-  both copies, so that slice of the benchmark is **unwinnable by construction**.
+- **leakage** - same function, same label, on both sides. A model can score by memorising.
+- **label noise** - same function, **opposite** labels. No model can be right on both
+  copies, so that slice is **unwinnable by construction**.
 
 ---
 
-## Measured result
+## The result
 
-`validation` → `test`, 2,732 rows each:
+`validation` &rarr; `test`, 2,732 rows each:
 
 | | exact | structural |
-|---|---|---|
+|---|---:|---:|
 | test rows also in validation | **1 (0.04%)** | **27 (0.99%)** |
-| …same label (leakage) | 0 | 22 |
-| …opposite label (noise) | 1 | 5 |
+| ...same label (leakage) | 0 | 22 |
+| ...opposite label (noise) | 1 | 5 |
 
-Duplicates *within* a single split:
+Duplicates **within** the test split itself:
 
-| Split | level | duplicate rows | with conflicting labels |
-|---|---|---|---|
-| test | exact | 4 (0.15%) | **4 — all of them** |
-| test | structural | 31 (1.13%) | 12 (0.44%) |
-| validation | exact | 0 | 0 |
-| validation | structural | 47 (1.72%) | 13 (0.48%) |
+| level | duplicate rows | with conflicting labels |
+|---|---:|---:|
+| exact | 4 (0.15%) | **4 - all of them** |
+| structural | 31 (1.13%) | 12 (0.44%) |
 
-### The finding
+### Two findings, one of them negative
 
-**Cross-split overlap is low.** At 0.04% exact and 0.99% structural, reported Devign
-scores are not obviously inflated by train/test copying. That is a negative result, and
-it runs against the assumption this repo started from.
+**Cross-split overlap is low.** At 0.04% exact and 0.99% structural, reported Devign scores
+are not obviously inflated by copying between splits. **That runs against the assumption
+this repo started from**, and it is reported as it came out.
 
-**But the duplicates that do exist are labelled inconsistently.** Every one of the four
-exact duplicate pairs inside the test split carries opposite labels. Whatever a model
-predicts, it is scored wrong on one copy of each pair. The same holds for 12 of the 31
-structural duplicates, and for 13 duplicate rows inside validation.
+**But the duplicates that exist are labelled inconsistently.** Every one of the four exact
+duplicate pairs in the test split carries opposite labels. Whatever a model predicts, it is
+scored wrong on one copy of each pair - a small ceiling below 100% that nothing in the
+benchmark's reporting mentions.
 
-The practical consequence is a small ceiling below 100% that no model can cross, and
-which nothing in the benchmark's reporting mentions.
+&#128202; **[Full tables, both splits, every level &rarr;](docs/RESULTS.md)**
 
 ---
 
-## ⚠️ Incomplete: train → test is not measured here
+## How it works
 
-The comparison that matters most — **train → test** — is **not in this README.** The
-train split (17.85 MB) would not download: two attempts produced 0-byte files while the
-connection was saturated by another transfer.
+```mermaid
+flowchart LR
+    A["Devign<br/>C functions + labels"] --> B1["exact<br/>whitespace only"]
+    A --> B2["structural<br/>strip comments and literals,<br/>rename identifiers"]
+    B1 --> C["sha256 digest"]
+    B2 --> C
+    C --> D["index one split,<br/>look up the other"]
+    D --> E{"match?"}
+    E -->|"same label"| F["LEAKAGE"]
+    E -->|"opposite label"| G["LABEL NOISE"]
+    E -->|"none"| H["clean"]
+
+    style F fill:#f59e0b,color:#fff
+    style G fill:#dc2626,color:#fff
+    style H fill:#16a34a,color:#fff
+```
+
+Control flow and C keywords survive structural normalisation, so `if` and `while` never
+collapse into each other - only naming and constants are erased.
+
+&#128269; **[Both normalisation levels in detail &rarr;](docs/METHOD.md)**
+
+---
+
+## &#9888; What this repo does NOT measure
+
+**train &rarr; test is not measured here.** That is the comparison that matters most, and
+it is missing: the 17.85 MB train split would not download - two attempts produced 0-byte
+files while the connection was saturated.
 
 The code path exists and is tested. Once the split is available:
 
@@ -63,28 +106,9 @@ The code path exists and is tested. Once the split is available:
 python src/leakage.py train test
 ```
 
-Treat the numbers above as `validation`↔`test` only. Validation overlap still matters —
-model selection on validation leaks into test — but it is the weaker of the two
-questions, and this repo does not yet answer the stronger one.
-
-I also could not verify the claim, which I had assumed going in, that CodeXGLUE's
-defect-detection split is *known* to be duplicate-heavy. Nothing in what I measured
-supports it at these thresholds. It is not cited here because I did not confirm it.
+Treat every number above as `validation` &harr; `test` only.
 
 ---
-
-## How the comparison works
-
-**exact** — collapse whitespace. A collision means the two functions are textually the
-same.
-
-**structural** — strip comments and literals, normalise numbers, and rename every
-identifier that is not a C keyword or standard type. A collision means the two differ
-only in naming and constants: a copy-paste with the variables renamed, which for a
-benchmark is still a duplicate. Control flow and types are preserved, so `if` and
-`while` never collapse into each other.
-
-Hashing and token substitution only — deterministic, no model, no embeddings, no seed.
 
 ## Run it
 
@@ -95,98 +119,52 @@ streamlit run ui/app.py                 # inspect overlapping pairs side by side
 pytest -q                               # 19 tests, no dataset, no network
 ```
 
-The dashboard shows each overlapping pair as two code panes with their labels, and
-flags the conflicting ones — those are worth looking at directly.
+The dashboard shows each overlapping pair as two code panes with their labels and flags the
+conflicting ones. It degrades to validation-only if the train split is absent, rather than
+refusing to start.
 
-## Limitations
-
-- **Structural normalisation is deliberately aggressive.** Two genuinely different
-  functions with identical control flow and types will collide. That inflates the
-  structural count relative to what a human would call a duplicate, which is why exact
-  and structural are always reported separately rather than blended.
-- **Duplicate detection is exact-match on a normal form**, not similarity search. Two
-  functions differing by one statement are not detected at either level.
-- **Only `func` and `target` are compared.** `project` and `commit_id` are not used to
-  corroborate a match.
-
-## Data
-
-`google/code_x_glue_cc_defect_detection` — test and validation splits (2.1 MB each)
-from the local Hugging Face cache. Test labels: 1,477 not-vulnerable / 1,255 vulnerable.
+<!-- screenshot placeholder
+![dashboard](docs/images/dashboard.png)
+-->
 
 ---
 
-## How it works
+## Also worth reading
 
-```mermaid
-flowchart TD
-    A["Devign / CodeXGLUE<br/>C functions + labels"] --> B["src/leakage.py"]
-    B --> C1["normalise_exact<br/>whitespace only"]
-    B --> C2["normalise_structural<br/>strip comments and literals,<br/>rename identifiers"]
-    C1 --> D["sha256 digest"]
-    C2 --> D
-    D --> E["index the reference split"]
-    E --> F["look up every test row"]
-    F --> G{"match found?"}
-    G -->|"same label"| H["LEAKAGE<br/>memorisable"]
-    G -->|"opposite label"| I["LABEL NOISE<br/>unwinnable"]
-    G -->|"no match"| J["clean"]
-    F --> K["internal_duplicates()<br/>within one split"]
-    style H fill:#f59e0b,color:#fff
-    style I fill:#dc2626,color:#fff
-    style J fill:#16a34a,color:#fff
-```
-
-Control flow and C keywords survive structural normalisation, so `if` and `while` never
-collapse into each other - only naming and constants are erased.
+| | |
+|---|---|
+| &#128202; **[Results](docs/RESULTS.md)** | Full tables for both splits at both levels |
+| &#128269; **[Method](docs/METHOD.md)** | Normalisation, hashing, leakage vs noise |
+| &#128736; **[Problems hit](docs/PROBLEMS.md)** | A silent "successful" download, and a wrong prior |
+| &#9888; **[Limitations](docs/LIMITATIONS.md)** | Why the structural count is inflated by design |
+| &#128640; **[Future work](docs/FUTURE.md)** | train&rarr;test, MinHash, quantifying the ceiling |
 
 ---
-
-## Problems hit while building this
-
-| Problem | What happened | Fix |
-|---|---|---|
-| **The train split would not download** | 17.85 MB, two attempts, both leaving **0-byte** files while the connection was saturated by another transfer | Shipped the validation-to-test result and marked train-to-test **explicitly not measured**, rather than estimating it |
-| **A silent "successful" download** | `hf_hub_download` exited 0 but no file appeared, so the analysis failed with a confusing missing-file error | Verified against the cache directory rather than trusting the exit code; the error now names the exact fetch command |
-| **The UI refused to start** | It loaded `train` at import, so anyone without that split got a crash instead of a dashboard | Train is optional; the app degrades to validation-only and explains how to fetch it |
-| **My prior was wrong** | I expected to confirm that CodeXGLUE is duplicate-heavy. The measurement says otherwise at these thresholds | Reported the negative result, and stated that the claim **could not be verified**, so it is not cited |
-
----
-
-## Future work
-
-1. **Measure train to test.** The comparison that matters. The code path exists and is
-   tested; it needs the 17.85 MB split.
-2. **Near-duplicate detection beyond exact-match-on-a-normal-form.** MinHash/LSH or token
-   edit distance would catch functions differing by a single statement, invisible now.
-3. **Use `project` and `commit_id`** to corroborate matches, and to check whether
-   duplicates cluster in particular upstream projects.
-4. **Quantify the ceiling.** Conflicting labels cap achievable accuracy below 100% -
-   compute that bound explicitly and compare it against published Devign scores.
-5. **Re-score a published model** on a de-duplicated, conflict-free test split to find out
-   whether reported numbers move at all.
-6. **Apply the same analysis to other CodeXGLUE tasks** - clone detection especially,
-   where duplication is structural to the task.
-
----
-
-## Stack
-
-`Python 3.11+` · `pandas` · `pyarrow` · `Streamlit` · `Altair` · `pytest` · `ruff` ·
-`GitHub Actions` · dataset via `Hugging Face Hub`
-
-## Keywords
-
-Devign · CodeXGLUE · vulnerability detection · data leakage · train test contamination ·
-benchmark contamination · duplicate detection · label noise · dataset quality ·
-code clone detection · software vulnerability dataset · C code analysis ·
-machine learning for code · benchmark validity · reproducibility
 
 ## Layout
 
 ```
 src/leakage.py    normalisation, hashing, overlap and duplicate counting
-ui/app.py         Streamlit: counts, charts, side-by-side pair inspection
+ui/app.py         Streamlit - counts, charts, side-by-side pair inspection
 tests/            19 tests on hand-written C - no dataset needed
+docs/             detailed documentation
 results/          measured output
 ```
+
+## Stack
+
+`Python 3.11+` &middot; `pandas` &middot; `pyarrow` &middot; `Streamlit` &middot; `Altair`
+&middot; `pytest` &middot; `ruff` &middot; `GitHub Actions` &middot; dataset via
+`Hugging Face Hub`
+
+## Keywords
+
+Devign &middot; CodeXGLUE &middot; vulnerability detection &middot; data leakage &middot;
+train test contamination &middot; benchmark contamination &middot; duplicate detection
+&middot; label noise &middot; dataset quality &middot; code clone detection &middot;
+software vulnerability dataset &middot; C code analysis &middot; machine learning for code
+&middot; benchmark validity &middot; reproducibility
+
+## Licence
+
+MIT - see [LICENSE](LICENSE).
