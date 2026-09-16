@@ -6,7 +6,6 @@ requires-python = ">=3.11"
 dependencies = ["pandas>=2.2", "pyarrow>=15"]
 
 [project.optional-dependencies]
-ui = ["streamlit>=1.40", "altair>=5"]
 fetch = ["huggingface_hub>=0.34"]
 
 [dependency-groups]

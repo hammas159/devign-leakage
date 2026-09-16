@@ -115,17 +115,25 @@ Treat every number above as `validation` &harr; `test` only.
 ```bash
 python src/leakage.py validation test   # the numbers above
 python src/leakage.py train test        # once the train split is available
-streamlit run ui/app.py                 # inspect overlapping pairs side by side
 pytest -q                               # 19 tests, no dataset, no network
 ```
 
-The dashboard shows each overlapping pair as two code panes with their labels and flags the
-conflicting ones. It degrades to validation-only if the train split is absent, rather than
-refusing to start.
+It degrades to validation-only if the train split is absent, rather than refusing to start.
 
-<!-- screenshot placeholder
-![dashboard](docs/images/dashboard.png)
--->
+---
+
+## Input
+
+![input](docs/images/input.png)
+
+## Output
+
+![output](docs/images/output.png)
+
+*Cross-split overlap is far smaller than the leakage literature assumes — one exact row.
+The damage is inside a single split: all four exact duplicates in `test` are labelled both
+vulnerable and not vulnerable, so four questions are unanswerable no matter what a model
+predicts.*
 
 ---
 
@@ -145,7 +153,6 @@ refusing to start.
 
 ```
 src/leakage.py    normalisation, hashing, overlap and duplicate counting
-ui/app.py         Streamlit - counts, charts, side-by-side pair inspection
 tests/            19 tests on hand-written C - no dataset needed
 docs/             detailed documentation
 results/          measured output
@@ -153,7 +160,7 @@ results/          measured output
 
 ## Stack
 
-`Python 3.11+` &middot; `pandas` &middot; `pyarrow` &middot; `Streamlit` &middot; `Altair`
+`Python 3.11+` &middot; `pandas` &middot; `pyarrow`
 &middot; `pytest` &middot; `ruff` &middot; `GitHub Actions` &middot; dataset via
 `Hugging Face Hub`
 
